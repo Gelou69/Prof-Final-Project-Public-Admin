@@ -24,16 +24,19 @@ function App() {
   // Auth State
   const [email, setEmail] = useState(''); 
   const [password, setPassword] = useState('');
+  // ⭐ NEW STATE: To toggle between sign-in and sign-up forms
+  const [isSigningUp, setIsSigningUp] = useState(false); 
+  const [authMessage, setAuthMessage] = useState('');
 
   // Profiles Management State
   const [editingProfile, setEditingProfile] = useState(null);
 
   // Orders Management State
-  const [newOrder, setNewOrder] = useState({ user_id: '', total_amount: 0, shipping_address: '', payment_method: 'COD', product_id: '', quantity: 1, price_at_purchase: 0, product_size: '' });
+  const [newOrder, setNewOrder] = useState({ user_id: '', total_amount: 0, shipping_address: '', payment_method: 'COD', product_id: '', quantity: 1, price_at_purchase: 0, product_size: '', product_color: '' });
   const [editingOrder, setEditingOrder] = useState(null);
 
   // Products Management State
-  const [newProduct, setNewProduct] = useState({ name: '', description: '', price: 0, stock_quantity: 1, image: null });
+  const [newProduct, setNewProduct] = useState({ name: '', description: '', price: 0, stock_quantity: 1, image: null, color: '' });
   const [editingProduct, setEditingProduct] = useState(null);
 
   // --- AUTHENTICATION & SESSION MANAGEMENT ---
@@ -70,8 +73,24 @@ function App() {
 
   // --- UTILITY/API FUNCTIONS ---
   const signIn = async () => {
+    setAuthMessage('');
     const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) console.error('Sign in error:', error);
+    if (error) setAuthMessage('Sign in failed: ' + error.message);
+  };
+  
+  // ⭐ NEW FUNCTION: Sign Up
+  const signUp = async () => {
+    setAuthMessage('');
+    const { error } = await supabase.auth.signUp({ email, password });
+
+    if (error) {
+      setAuthMessage('Sign up failed: ' + error.message);
+    } else {
+      // Supabase typically requires email confirmation.
+      // After sign up, the user won't immediately have a session unless using passwordless or email is confirmed.
+      setAuthMessage('Sign up successful! Please check your email to confirm your account.');
+      setIsSigningUp(false); // Switch back to sign-in screen
+    }
   };
 
   const signOut = async () => {
@@ -105,7 +124,7 @@ function App() {
     else return data.path;
   };
 
-  // --- PROFILES MANAGEMENT FUNCTIONS ---
+  // --- PROFILES MANAGEMENT FUNCTIONS (Omitted for brevity, assumed unchanged) ---
   const editProfile = async () => {
     const { error } = await supabase.from('profiles').update({
       username: editingProfile.username, full_name: editingProfile.full_name,
@@ -120,13 +139,12 @@ function App() {
     else fetchProfiles();
   };
   
-  // New function to handle order viewing
   const viewUserOrders = (userId) => {
     setSelectedUserId(userId);
     setActiveTab('orders');
   };
 
-  // --- ORDERS MANAGEMENT FUNCTIONS ---
+  // --- ORDERS MANAGEMENT FUNCTIONS (Omitted for brevity, assumed unchanged) ---
   const addOrder = async () => {
     const { data: orderData, error: orderError } = await supabase.from('orders').insert({
       user_id: newOrder.user_id, total_amount: newOrder.total_amount,
@@ -137,11 +155,11 @@ function App() {
     const { error: itemError } = await supabase.from('order_items').insert({
       order_id: orderData.id, product_id: newOrder.product_id,
       quantity: newOrder.quantity, price_at_purchase: newOrder.price_at_purchase,
-      product_size: newOrder.product_size
+      product_size: newOrder.product_size, product_color: newOrder.product_color
     });
     
     if (itemError) console.error('Add order item error:', itemError);
-    else { fetchOrders(); setNewOrder({ user_id: '', total_amount: 0, shipping_address: '', payment_method: 'COD', product_id: '', quantity: 1, price_at_purchase: 0, product_size: '' }); }
+    else { fetchOrders(); setNewOrder({ user_id: '', total_amount: 0, shipping_address: '', payment_method: 'COD', product_id: '', quantity: 1, price_at_purchase: 0, product_size: '', product_color: '' }); }
   };
 
   const editOrder = async () => {
@@ -159,15 +177,16 @@ function App() {
     else fetchOrders();
   };
 
-  // --- PRODUCT MANAGEMENT FUNCTIONS ---
+  // --- PRODUCT MANAGEMENT FUNCTIONS (Omitted for brevity, assumed unchanged) ---
   const addProduct = async () => {
     let imagePath = newProduct.image ? await uploadImage(newProduct.image) : null;
     const { error } = await supabase.from('products').insert({
       name: newProduct.name, description: newProduct.description,
-      price: newProduct.price, stock_quantity: newProduct.stock_quantity, image_path: imagePath
+      price: newProduct.price, stock_quantity: newProduct.stock_quantity, 
+      image_path: imagePath, color: newProduct.color
     });
     if (error) console.error('Add product error:', error);
-    else { fetchProducts(); setNewProduct({ name: '', description: '', price: 0, stock_quantity: 1, image: null }); }
+    else { fetchProducts(); setNewProduct({ name: '', description: '', price: 0, stock_quantity: 1, image: null, color: '' }); }
   };
 
   const editProduct = async () => {
@@ -175,7 +194,8 @@ function App() {
     if (editingProduct.image instanceof File) { imagePath = await uploadImage(editingProduct.image); }
     const { error } = await supabase.from('products').update({
       name: editingProduct.name, description: editingProduct.description,
-      price: editingProduct.price, stock_quantity: editingProduct.stock_quantity, image_path: imagePath
+      price: editingProduct.price, stock_quantity: editingProduct.stock_quantity, 
+      image_path: imagePath, color: editingProduct.color
     }).eq('id', editingProduct.id);
     if (error) console.error('Edit product error:', error);
     else { fetchProducts(); setEditingProduct(null); }
@@ -199,15 +219,44 @@ function App() {
   if (!user) {
     return (
       <div className="auth-container">
-        <h1>Sign In to Admin Dashboard</h1>
-        <input type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} />
-        <input type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} />
-        <button onClick={signIn}>Sign In</button>
+        {/* ⭐ NEW: Inner container for mobile responsiveness and styling (from CSS) */}
+        <div> 
+          {/* ⭐ NEW: Conditional rendering for Sign Up vs. Sign In */}
+          <h1>{isSigningUp ? 'Sign Up for Admin Access' : 'Sign In to Admin Dashboard'}</h1>
+          
+          {/* ⭐ NEW: Display Auth messages */}
+          {authMessage && <p style={{ color: authMessage.includes('failed') ? 'var(--danger-color)' : 'var(--success-color)', marginBottom: '15px', fontWeight: 'bold' }}>{authMessage}</p>}
+          
+          <input type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} />
+          <input type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} />
+          
+          {isSigningUp ? (
+            <button onClick={signUp}>Sign Up</button>
+          ) : (
+            <button onClick={signIn}>Sign In</button>
+          )}
+
+          {/* ⭐ NEW: Toggle button */}
+          <button 
+            style={{ 
+              backgroundColor: '#95a5a6', /* Muted button for secondary action */
+              marginTop: '10px' 
+            }}
+            onClick={() => {
+              setIsSigningUp(!isSigningUp);
+              setAuthMessage(''); // Clear message when switching
+              setEmail('');
+              setPassword('');
+            }}
+          >
+            {isSigningUp ? 'Already have an account? Sign In' : 'Need Admin Access? Sign Up'}
+          </button>
+        </div>
       </div>
     );
   }
 
-  // --- MAIN DASHBOARD UI ---
+  // --- MAIN DASHBOARD UI (Omitted for brevity, assumed unchanged) ---
   return (
     <div className="App">
       <h1>Admin Dashboard</h1>
@@ -219,9 +268,6 @@ function App() {
       
       <hr/>
 
-      {/* ---------------------------------- */}
-      {/* PROFILES TAB (Main View)         */}
-      {/* ---------------------------------- */}
       {activeTab === 'profiles' && (
         <div className="profiles-tab">
           <h2>👤 User Profiles</h2>
@@ -229,12 +275,12 @@ function App() {
             {profiles.map(profile => (
               <li key={profile.id} style={{ borderBottom: '1px dotted #ccc', padding: '10px 0' }}>
                 <p>
-                    <strong>ID:</strong> {profile.id} | 
-                    <strong>Username:</strong> {profile.username} | 
-                    <strong>Full Name:</strong> {profile.full_name} 
+                  <strong>ID:</strong> {profile.id} | 
+                  <strong>Username:</strong> {profile.username} | 
+                  <strong>Full Name:</strong> {profile.full_name} 
                 </p>
                 <button onClick={() => setEditingProfile(profile)}>Edit Profile</button>
-                <button onClick={() => viewUserOrders(profile.id)}>View Orders</button> {/* ⭐ NEW BUTTON ⭐ */}
+                <button onClick={() => viewUserOrders(profile.id)}>View Orders</button>
                 <button onClick={() => deleteProfile(profile.id)}>Delete Profile</button>
               </li>
             ))}
@@ -254,9 +300,6 @@ function App() {
         </div>
       )}
 
-      {/* ---------------------------------- */}
-      {/* ORDERS TAB (Contextual View)     */}
-      {/* ---------------------------------- */}
       {activeTab === 'orders' && selectedUserId && (
         <div className="orders-tab">
           <h2>📦 Orders for User ID: {selectedUserId}</h2>
@@ -280,6 +323,7 @@ function App() {
                       <li key={index}>
                         Product ID: {item.product_id}, Qty: {item.quantity}, Price: ₱{item.price_at_purchase} 
                         {item.product_size && ` (Size: ${item.product_size})`}
+                        {item.product_color && ` (Color: ${item.product_color})`}
                       </li>
                     ))}
                   </ul>
@@ -297,7 +341,6 @@ function App() {
             <div className="edit-form">
               <h3>Edit Order Status/Details (Order ID: {editingOrder.id})</h3>
               
-              {/* ⭐ Status Dropdown ⭐ */}
               <label>Status:</label>
               <select 
                 value={editingOrder.status} 
@@ -322,22 +365,22 @@ function App() {
         </div>
       )}
       
-      {/* ---------------------------------- */}
-      {/* PRODUCTS TAB                     */}
-      {/* ---------------------------------- */}
       {activeTab === 'products' && (
         <div className="products-tab">
           <h2>🛒 Products</h2>
+          {/* Add Product Form */}
           <div className="add-form">
-           
+            <h3>Add New Product</h3>
             <input type="text" placeholder="Name" value={newProduct.name} onChange={e => setNewProduct({...newProduct, name: e.target.value})} />
             <input type="text" placeholder="Description" value={newProduct.description} onChange={e => setNewProduct({...newProduct, description: e.target.value})} />
             <input type="number" placeholder="Price" value={newProduct.price} onChange={e => setNewProduct({...newProduct, price: parseFloat(e.target.value)})} />
             <input type="number" placeholder="Stock Quantity" value={newProduct.stock_quantity} onChange={e => setNewProduct({...newProduct, stock_quantity: parseInt(e.target.value)})} />
+            <input type="text" placeholder="Color" value={newProduct.color} onChange={e => setNewProduct({...newProduct, color: e.target.value})} />
             <input type="file" onChange={e => setNewProduct({...newProduct, image: e.target.files[0]})} />
             <button onClick={addProduct}>Add Product</button>
           </div>
           <hr/>
+          {/* Products List */}
           <ul>
             {products.map(product => (
               <li key={product.id} style={{ borderBottom: '1px dotted #ccc', padding: '10px 0' }}>
@@ -354,6 +397,7 @@ function App() {
                   )}
                   <div>
                     <strong>{product.name}</strong> - ₱{product.price} ({product.stock_quantity} in stock)
+                    {product.color && <span> | Color: {product.color}</span>}
                     <p style={{ fontSize: '0.9em', color: '#666' }}>{product.description}</p>
                     <button onClick={() => setEditingProduct({...product, image: null})}>Edit</button>
                     <button onClick={() => deleteProduct(product.id)}>Delete</button>
@@ -362,6 +406,7 @@ function App() {
               </li>
             ))}
           </ul>
+          {/* Edit Product Form */}
           {editingProduct && (
             <div className="edit-form">
               <h3>Edit Product</h3>
@@ -369,6 +414,7 @@ function App() {
               <input type="text" value={editingProduct.description} onChange={e => setEditingProduct({...editingProduct, description: e.target.value})} placeholder="Description" />
               <input type="number" value={editingProduct.price} onChange={e => setEditingProduct({...editingProduct, price: parseFloat(e.target.value)})} placeholder="Price" />
               <input type="number" value={editingProduct.stock_quantity} onChange={e => setEditingProduct({...editingProduct, stock_quantity: parseInt(e.target.value)})} placeholder="Stock Quantity" />
+              <input type="text" value={editingProduct.color} onChange={e => setEditingProduct({...editingProduct, color: e.target.value})} placeholder="Color" />
               <input type="file" onChange={e => setEditingProduct({...editingProduct, image: e.target.files[0]})} />
               <button onClick={editProduct}>Save</button>
               <button onClick={() => setEditingProduct(null)}>Cancel</button>
